@@ -1,0 +1,177 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string
+    //   - email: string (required)
+    //   - photoURL: string
+    //   - createdAt: timestamp
+    //
+    // Collection: characters
+    // Document ID: characterId
+    // Fields:
+    //   - id: string
+    //   - name: string (required)
+    //   - description: string
+    //   - personality: string (required)
+    //   - creatorId: string (required)
+    //   - creatorName: string
+    //   - avatarUrl: string
+    //   - isPublic: boolean
+    //   - createdAt: timestamp
+    //
+    // Collection: chats
+    // Document ID: chatId
+    // Fields:
+    //   - id: string
+    //   - userId: string (required)
+    //   - characterId: string (required)
+    //   - characterName: string
+    //   - lastMessage: string
+    //   - updatedAt: timestamp
+    //
+    // Collection: chats/{chatId}/messages
+    // Document ID: messageId
+    // Fields:
+    //   - id: string
+    //   - chatId: string (required)
+    //   - senderId: string
+    //   - role: string (required, enum: ['user', 'model'])
+    //   - content: string (required)
+    //   - createdAt: timestamp
+    //
+    // Collection: characters/{characterId}/ratings
+    // Document ID: userId
+    // Fields:
+    //   - id: string
+    //   - characterId: string (required)
+    //   - userId: string (required)
+    //   - rating: int (required, 1-5)
+    //   - createdAt: timestamp
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    function isCharacterCreator() {
+      return isAuthenticated() && request.auth.uid == resource.data.creatorId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid']) &&
+             data.uid is string;
+    }
+
+    function isValidCharacter(data) {
+      return data.keys().hasAll(['name', 'personality', 'creatorId']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.personality is string && data.personality.size() > 0 && data.personality.size() < 2000 &&
+             (!('appearance' in data) || (data.appearance is string && data.appearance.size() < 1000)) &&
+             (!('speechStyle' in data) || (data.speechStyle is string && data.speechStyle.size() < 1000)) &&
+             (!('firstMessage' in data) || (data.firstMessage is string && data.firstMessage.size() < 1000)) &&
+             (!('scenario' in data) || (data.scenario is string && data.scenario.size() < 1000)) &&
+             (!('biography' in data) || (data.biography is string && data.biography.size() < 5000)) &&
+             (!('averageRating' in data) || (data.averageRating is number)) &&
+             (!('ratingCount' in data) || (data.ratingCount is number)) &&
+             (!('responseLength' in data) || (data.responseLength in ['short', 'medium', 'long'])) &&
+             (!('creativity' in data) || (data.creativity in ['low', 'medium', 'high'])) &&
+             (!('strictness' in data) || (data.strictness in ['flexible', 'balanced', 'strict'])) &&
+             (!('tone' in data) || (data.tone in ['formal', 'casual', 'humorous', 'dramatic'])) &&
+             data.creatorId == request.auth.uid;
+    }
+
+    function isValidRating(data) {
+      return data.keys().hasAll(['characterId', 'userId', 'rating']) &&
+             data.characterId is string &&
+             data.userId == request.auth.uid &&
+             data.rating is int && data.rating >= 1 && data.rating <= 5;
+    }
+
+    function isValidChat(data) {
+      return data.keys().hasAll(['userId', 'characterId']) &&
+             data.userId == request.auth.uid &&
+             data.characterId is string;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['chatId', 'role', 'content']) &&
+             data.chatId is string &&
+             data.role in ['user', 'model'] &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 5000;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow get: if isAuthenticated();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /characters/{characterId} {
+      allow read: if resource.data.isPublic == true || isCharacterCreator();
+      allow list: if resource.data.isPublic == true || isCharacterCreator();
+      allow create: if isAuthenticated() && isValidCharacter(request.resource.data);
+      allow update: if (isCharacterCreator() && isValidCharacter(request.resource.data)) || 
+                      (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['averageRating', 'ratingCount']));
+      allow delete: if isCharacterCreator();
+
+      match /ratings/{userId} {
+        allow read: if isAuthenticated();
+        allow create: if isOwner(userId) && isValidRating(request.resource.data);
+        allow update: if isOwner(userId) && isValidRating(request.resource.data);
+      }
+    }
+
+    match /chats/{chatId} {
+      allow read: if isDocOwner();
+      allow list: if isAuthenticated() && request.query.limit <= 100; // Basic list protection
+      allow create: if isAuthenticated() && isValidChat(request.resource.data);
+      allow update: if isDocOwner() && isValidChat(request.resource.data);
+      allow delete: if isDocOwner();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && get(/databases/$(database)/documents/chats/$(chatId)).data.userId == request.auth.uid;
+        allow list: if isAuthenticated() && get(/databases/$(database)/documents/chats/$(chatId)).data.userId == request.auth.uid;
+        allow create: if isAuthenticated() && get(/databases/$(database)/documents/chats/$(chatId)).data.userId == request.auth.uid && isValidMessage(request.resource.data);
+      }
+    }
+  }
+}

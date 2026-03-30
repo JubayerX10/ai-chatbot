@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Character": {
+      "title": "Character",
+      "description": "A custom AI bot created by a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "personality": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "averageRating": { "type": "number" },
+        "ratingCount": { "type": "number" },
+        "responseLength": { "type": "string", "enum": ["short", "medium", "long"] },
+        "creativity": { "type": "string", "enum": ["low", "medium", "high"] },
+        "strictness": { "type": "string", "enum": ["flexible", "balanced", "strict"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "personality", "creatorId"]
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "A chat session between a user and a character.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "characterId": { "type": "string" },
+        "characterName": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "characterId"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single message in a chat session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "chatId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["chatId", "role", "content"]
+    },
+    "Rating": {
+      "title": "Rating",
+      "description": "A user's rating for a character.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "characterId": { "type": "string" },
+        "userId": { "type": "string" },
+        "rating": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["characterId", "userId", "rating"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data."
+    },
+    "/characters/{characterId}": {
+      "schema": "Character",
+      "description": "Public and private characters."
+    },
+    "/chats/{chatId}": {
+      "schema": "ChatSession",
+      "description": "User chat sessions."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a chat session."
+    },
+    "/characters/{characterId}/ratings/{userId}": {
+      "schema": "Rating",
+      "description": "User ratings for a character."
+    }
+  }
+}
