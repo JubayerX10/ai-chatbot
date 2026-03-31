@@ -55,6 +55,7 @@ export interface Message {
   senderId: string;
   role: 'user' | 'model';
   content: string;
+  read?: boolean;
   createdAt: Timestamp;
 }
 
@@ -63,5 +64,16 @@ export interface Rating {
   characterId: string;
   userId: string;
   rating: number; // 1-5
+  createdAt: Timestamp;
+}
+
+export interface Story {
+  id: string;
+  characterId: string;
+  characterName: string;
+  userId: string;
+  title: string;
+  content: string;
+  scenario?: string;
   createdAt: Timestamp;
 }

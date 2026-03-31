@@ -85,3 +85,41 @@ export async function generateCharacterAvatar(prompt: string) {
     return null;
   }
 }
+
+export async function generateStory(character: Character, scenario: string) {
+  const model = ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: [
+      {
+        role: "user",
+        parts: [{ 
+          text: `Write a short story about ${character.name}. 
+          
+          [CHARACTER PROFILE]
+          Name: ${character.name}
+          Personality: ${character.personality}
+          ${character.appearance ? `Appearance: ${character.appearance}` : ''}
+          ${character.biography ? `Biography: ${character.biography}` : ''}
+          
+          [SCENARIO]
+          ${scenario}
+          
+          The story should be engaging, maintain the character's personality, and be approximately 500-800 words long. 
+          Format the response as a JSON object with 'title' and 'content' fields. 
+          The 'content' field should be in Markdown format.` 
+        }]
+      }
+    ],
+    config: {
+      responseMimeType: "application/json",
+    }
+  });
+
+  const response = await model;
+  try {
+    return JSON.parse(response.text || '{"title": "Untitled Story", "content": "Failed to generate story."}');
+  } catch (e) {
+    console.error("Error parsing story JSON:", e);
+    return { title: "Untitled Story", content: response.text || "Failed to generate story." };
+  }
+}

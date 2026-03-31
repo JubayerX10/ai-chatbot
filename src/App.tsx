@@ -13,8 +13,8 @@ import {
   OperationType, 
   handleFirestoreError 
 } from './firebase';
-import { UserProfile, Character, ChatSession, Message } from './types';
-import { getChatResponse, generateCharacterAvatar } from './gemini';
+import { UserProfile, Character, ChatSession, Message, Story } from './types';
+import { getChatResponse, generateCharacterAvatar, generateStory } from './gemini';
 import { 
   MessageSquare, 
   Plus, 
@@ -32,6 +32,7 @@ import {
   Share2,
   Copy,
   Check,
+  CheckCheck,
   Globe,
   Lock,
   Star,
@@ -49,13 +50,18 @@ import {
   Apple,
   Mail,
   Phone,
-  Chrome
+  Chrome,
+  BookOpen,
+  Wand2,
+  History as HistoryIcon,
+  Calendar,
+  Eye
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 
 // --- Utilities ---
 function cn(...inputs: ClassValue[]) {
@@ -301,6 +307,9 @@ const Navbar = () => {
             <div className="flex items-center gap-2 sm:gap-4">
               <Link to="/history" className="p-2.5 hover:bg-zinc-900 rounded-2xl text-zinc-500 hover:text-white transition-all relative group">
                 <MessageSquare className="w-5 h-5" />
+              </Link>
+              <Link to="/stories" className="p-2.5 hover:bg-zinc-900 rounded-2xl text-zinc-500 hover:text-white transition-all relative group">
+                <BookOpen className="w-5 h-5" />
               </Link>
               <div className="w-px h-6 bg-zinc-800 mx-1 sm:mx-2" />
               <div className="flex items-center gap-3">
@@ -1367,6 +1376,301 @@ const Profile = () => {
   );
 };
 
+const StoryGeneratorModal = ({ isOpen, onClose, character }: { isOpen: boolean, onClose: () => void, character: Character }) => {
+  const { user } = useAuth();
+  const [scenario, setScenario] = useState(character.scenario || "");
+  const [generating, setGenerating] = useState(false);
+  const navigate = useNavigate();
+
+  if (!isOpen) return null;
+
+  const handleGenerate = async () => {
+    if (!user) return;
+    setGenerating(true);
+    try {
+      const storyData = await generateStory(character, scenario);
+      const storyRef = await addDoc(collection(db, 'stories'), {
+        characterId: character.id,
+        characterName: character.name,
+        userId: user.uid,
+        title: storyData.title,
+        content: storyData.content,
+        scenario: scenario,
+        createdAt: serverTimestamp()
+      });
+      onClose();
+      navigate(`/story/${storyRef.id}`);
+    } catch (err) {
+      console.error("Error generating story:", err);
+      alert("Failed to generate story. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-zinc-950 border border-zinc-800 p-8 rounded-[2.5rem] max-w-lg w-full space-y-6 shadow-3xl relative overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 via-red-500 to-orange-500" />
+        
+        <button 
+          onClick={onClose}
+          className="absolute top-6 right-6 p-2 hover:bg-zinc-900 rounded-full text-zinc-500 transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="space-y-2">
+          <div className="w-16 h-16 bg-orange-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <BookOpen className="w-8 h-8 text-orange-500" />
+          </div>
+          <h3 className="text-2xl font-black uppercase italic tracking-tighter text-center">Generate a Story</h3>
+          <p className="text-zinc-500 text-sm font-medium text-center">Forge a new legend for {character.name}.</p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] pl-1">Scenario (Optional)</label>
+            <textarea 
+              placeholder="What happens in this story? (e.g., 'A mysterious traveler arrives at the tavern...')"
+              value={scenario}
+              onChange={(e) => setScenario(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-4 px-6 focus:outline-none focus:border-orange-500 transition-all text-sm min-h-[120px] resize-none"
+            />
+          </div>
+
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-orange-500/20 flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
+          >
+            {generating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                Forging Legend...
+              </>
+            ) : (
+              <>
+                <Wand2 className="w-4 h-4" />
+                Generate Story
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const StoryCard = ({ story }: { story: Story }) => {
+  return (
+    <Link 
+      to={`/story/${story.id}`}
+      className="group relative bg-zinc-900 border border-zinc-800/50 rounded-[2.5rem] p-6 hover:border-orange-500/40 transition-all hover:-translate-y-1 shadow-2xl flex flex-col gap-4"
+    >
+      <div className="flex justify-between items-start">
+        <div className="space-y-1">
+          <h3 className="text-xl font-black text-white tracking-tight group-hover:text-orange-400 transition-colors line-clamp-1">{story.title}</h3>
+          <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-black uppercase tracking-widest">
+            <UserIcon className="w-3 h-3" />
+            {story.characterName}
+          </div>
+        </div>
+        <div className="p-2 bg-zinc-950 rounded-xl border border-zinc-800">
+          <BookOpen className="w-4 h-4 text-orange-500" />
+        </div>
+      </div>
+      
+      <p className="text-xs text-zinc-400 line-clamp-3 leading-relaxed font-medium">
+        {story.content.replace(/[#*`]/g, '').slice(0, 200)}...
+      </p>
+
+      <div className="flex items-center justify-between pt-2 border-t border-zinc-800/50">
+        <div className="flex items-center gap-2 text-[10px] text-zinc-600 font-black uppercase tracking-widest">
+          <Calendar className="w-3 h-3" />
+          {story.createdAt ? formatDistanceToNow(story.createdAt.toDate(), { addSuffix: true }) : "Recent"}
+        </div>
+        <div className="flex items-center gap-1 text-[10px] text-orange-500 font-black uppercase tracking-widest group-hover:translate-x-1 transition-transform">
+          Read More
+          <ArrowLeft className="w-3 h-3 rotate-180" />
+        </div>
+      </div>
+    </Link>
+  );
+};
+
+const Stories = () => {
+  const { user } = useAuth();
+  const [stories, setStories] = useState<Story[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'stories'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setStories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Story)));
+      setLoading(false);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'stories'));
+
+    return () => unsubscribe();
+  }, [user]);
+
+  if (!user) return <Navigate to="/" />;
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-20 pt-28">
+      <div className="px-4 max-w-7xl mx-auto space-y-12">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="space-y-1">
+            <h2 className="text-4xl font-black uppercase italic tracking-tighter">My Stories</h2>
+            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Legends forged by Lumina AI</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-zinc-900/50 border border-zinc-800 rounded-full px-4 py-2">
+              <BookOpen className="w-4 h-4 text-orange-500" />
+              <span className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">{stories.length} Stories</span>
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
+          </div>
+        ) : stories.length === 0 ? (
+          <div className="text-center py-32 space-y-6 bg-zinc-900/30 border border-dashed border-zinc-800 rounded-[3rem]">
+            <div className="w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center mx-auto">
+              <Ghost className="w-10 h-10 text-zinc-700" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-black uppercase italic tracking-tighter">No stories yet</h3>
+              <p className="text-zinc-500 text-sm max-w-xs mx-auto">Generate stories with your favorite characters to see them here.</p>
+            </div>
+            <Link to="/" className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-orange-500/20">
+              Discover Characters
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {stories.map(story => (
+              <StoryCard key={story.id} story={story} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const StoryDetail = () => {
+  const { storyId } = useParams();
+  const [story, setStory] = useState<Story | null>(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!storyId) return;
+    const unsubscribe = onSnapshot(doc(db, 'stories', storyId), (snap) => {
+      if (snap.exists()) {
+        setStory({ id: snap.id, ...snap.data() } as Story);
+      } else {
+        navigate('/stories');
+      }
+      setLoading(false);
+    }, (err) => handleFirestoreError(err, OperationType.GET, `stories/${storyId}`));
+
+    return () => unsubscribe();
+  }, [storyId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!story) return null;
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-20 pt-28">
+      <div className="px-4 max-w-3xl mx-auto space-y-12">
+        <button 
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors group"
+        >
+          <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+          <span className="text-[10px] font-black uppercase tracking-widest">Back</span>
+        </button>
+
+        <div className="space-y-8">
+          <div className="space-y-4 text-center">
+            <div className="w-20 h-20 bg-orange-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <BookOpen className="w-10 h-10 text-orange-500" />
+            </div>
+            <h1 className="text-5xl font-black uppercase italic tracking-tighter leading-none">{story.title}</h1>
+            <div className="flex items-center justify-center gap-4">
+              <Link to={`/chat/${story.characterId}`} className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-orange-500 hover:text-orange-400 transition-colors">
+                <UserIcon className="w-4 h-4" />
+                {story.characterName}
+              </Link>
+              <div className="w-1 h-1 bg-zinc-800 rounded-full" />
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-500">
+                <Calendar className="w-4 h-4" />
+                {story.createdAt ? formatDistanceToNow(story.createdAt.toDate(), { addSuffix: true }) : "Recent"}
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
+
+          {story.scenario && (
+            <div className="bg-zinc-900/50 border border-zinc-800 p-8 rounded-[2.5rem] space-y-3">
+              <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Scenario</h4>
+              <p className="text-sm text-zinc-400 italic leading-relaxed">"{story.scenario}"</p>
+            </div>
+          )}
+
+          <div className="prose prose-invert prose-orange max-w-none">
+            <div className="text-zinc-300 leading-[1.8] text-lg font-medium space-y-6">
+              <ReactMarkdown>{story.content}</ReactMarkdown>
+            </div>
+          </div>
+
+          <div className="pt-12 border-t border-zinc-800 flex justify-center gap-4">
+            <button 
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href);
+                alert("Link copied!");
+              }}
+              className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all"
+            >
+              <Share2 className="w-4 h-4" />
+              Share Story
+            </button>
+            <Link 
+              to={`/chat/${story.characterId}`}
+              className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-orange-500/20"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Chat with {story.characterName}
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const History = () => {
   const { user } = useAuth();
   const [chats, setChats] = useState<ChatSession[]>([]);
@@ -1966,10 +2270,23 @@ const Chat = () => {
   const [chatId, setChatId] = useState<string | null>(null);
   const [userRating, setUserRating] = useState<number | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showStoryModal, setShowStoryModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Mark AI messages as read when they appear
+  useEffect(() => {
+    const unreadAiMessages = messages.filter(m => m.role === 'model' && !m.read);
+    if (unreadAiMessages.length > 0 && chatId) {
+      unreadAiMessages.forEach(msg => {
+        updateDoc(doc(db, 'chats', chatId, 'messages', msg.id), { read: true })
+          .catch(err => console.error("Error marking message as read:", err));
+      });
+    }
+  }, [messages, chatId]);
 
   const isFollowing = profile?.following?.includes(character?.creatorId || '');
   const isLiked = profile?.likedCharacters?.includes(character?.id || '');
@@ -2182,11 +2499,12 @@ const Chat = () => {
 
     try {
       // Add user message
-      await addDoc(collection(db, 'chats', chatId, 'messages'), {
+      const userMsgRef = await addDoc(collection(db, 'chats', chatId, 'messages'), {
         chatId,
         senderId: user.uid,
         role: 'user',
         content: userMsg,
+        read: false,
         createdAt: serverTimestamp()
       });
 
@@ -2203,12 +2521,16 @@ const Chat = () => {
         userMsg
       );
 
+      // Mark user message as read (AI "read" it)
+      await updateDoc(userMsgRef, { read: true });
+
       // Add AI message
       await addDoc(collection(db, 'chats', chatId, 'messages'), {
         chatId,
         senderId: 'ai',
         role: 'model',
         content: aiResponse,
+        read: false,
         createdAt: serverTimestamp()
       });
 
@@ -2299,7 +2621,7 @@ const Chat = () => {
                 </div>
 
                 <div className={cn(
-                  "flex flex-col max-w-[85%] sm:max-w-[75%]",
+                  "flex flex-col max-w-[85%] sm:max-w-[75%] relative",
                   msg.role === 'user' ? "items-end" : "items-start"
                 )}
                 >
@@ -2308,11 +2630,11 @@ const Chat = () => {
                       {msg.role === 'user' ? (user?.displayName || 'You') : character.name}
                     </span>
                     <span className="text-[9px] text-zinc-700 font-bold">
-                      {msg.createdAt ? formatDistanceToNow(msg.createdAt.toDate(), { addSuffix: true }) : "just now"}
+                      {msg.createdAt ? format(msg.createdAt.toDate(), 'h:mm a') : "just now"}
                     </span>
                   </div>
                   <div className={cn(
-                    "px-4 py-3 rounded-2xl text-sm sm:text-base leading-relaxed shadow-2xl",
+                    "px-4 py-3 rounded-2xl text-sm sm:text-base leading-relaxed shadow-2xl relative group/msg",
                     msg.role === 'user' 
                       ? "bg-orange-500 text-white rounded-tr-none" 
                       : "bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-tl-none"
@@ -2320,7 +2642,42 @@ const Chat = () => {
                     <div className="markdown-body">
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
+                    
+                    {/* Copy Button */}
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.content);
+                        setCopiedId(msg.id);
+                        setTimeout(() => setCopiedId(null), 2000);
+                      }}
+                      className={cn(
+                        "absolute top-2 transition-all p-1.5 rounded-lg bg-black/20 hover:bg-black/40 text-white/70 hover:text-white",
+                        msg.role === 'user' ? "right-full mr-2" : "left-full ml-2",
+                        copiedId === msg.id ? "opacity-100 bg-green-500/20 text-green-400" : "opacity-0 group-hover/msg:opacity-100"
+                      )}
+                      title="Copy message"
+                    >
+                      {copiedId === msg.id ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
                   </div>
+
+                  {/* Read Receipt (for user messages) */}
+                  {msg.role === 'user' && (
+                    <div className="mt-1 flex items-center gap-1 px-1">
+                      {msg.read ? (
+                        <CheckCheck className="w-3 h-3 text-orange-400" />
+                      ) : (
+                        <Check className="w-3 h-3 text-zinc-600" />
+                      )}
+                      <span className="text-[8px] font-bold text-zinc-700 uppercase tracking-tighter">
+                        {msg.read ? "Read" : "Sent"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -2478,6 +2835,14 @@ const Chat = () => {
             </div>
 
             <div className="pt-6 border-t border-zinc-800 space-y-3">
+              <button 
+                onClick={() => setShowStoryModal(true)}
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-[2rem] font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-3 shadow-xl shadow-orange-500/20 border border-orange-400"
+              >
+                <Wand2 className="w-4 h-4" />
+                Generate Story
+              </button>
+
               <div className="flex gap-3">
                 <button 
                   onClick={toggleLike}
@@ -2548,6 +2913,12 @@ const Chat = () => {
           onClick={() => setShowSidebar(false)}
         />
       )}
+
+      <StoryGeneratorModal 
+        isOpen={showStoryModal} 
+        onClose={() => setShowStoryModal(false)} 
+        character={character} 
+      />
     </div>
   );
 };
@@ -2606,6 +2977,8 @@ export default function App() {
             <Routes>
               <Route path="/" element={<><Navbar /><Home /></>} />
               <Route path="/history" element={<><Navbar /><History /></>} />
+              <Route path="/stories" element={<><Navbar /><Stories /></>} />
+              <Route path="/story/:storyId" element={<><Navbar /><StoryDetail /></>} />
               <Route path="/create" element={<><Navbar /><CreateCharacter /></>} />
               <Route path="/profile" element={<><Navbar /><Profile /></>} />
               <Route path="/user/:userId" element={<><Navbar /><PublicProfile /></>} />

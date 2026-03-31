@@ -59,6 +59,7 @@
         "senderId": { "type": "string" },
         "role": { "type": "string", "enum": ["user", "model"] },
         "content": { "type": "string" },
+        "read": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["chatId", "role", "content"]
@@ -75,6 +76,22 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["characterId", "userId", "rating"]
+    },
+    "Story": {
+      "title": "Story",
+      "description": "An AI-generated story based on a character and scenario.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "characterId": { "type": "string" },
+        "characterName": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "scenario": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["characterId", "userId", "title", "content"]
     }
   },
   "firestore": {
@@ -97,6 +114,10 @@
     "/characters/{characterId}/ratings/{userId}": {
       "schema": "Rating",
       "description": "User ratings for a character."
+    },
+    "/stories/{storyId}": {
+      "schema": "Story",
+      "description": "AI-generated stories."
     }
   }
 }

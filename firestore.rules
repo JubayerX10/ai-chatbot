@@ -79,6 +79,12 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == resource.data.creatorId;
     }
 
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "mdjubayerrahman097@gmail.com" && request.auth.token.email_verified == true));
+    }
+
     function isValidEmail(email) {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
@@ -134,6 +140,15 @@ service cloud.firestore {
              data.content is string && data.content.size() > 0 && data.content.size() < 5000;
     }
 
+    function isValidStory(data) {
+      return data.keys().hasAll(['characterId', 'userId', 'title', 'content']) &&
+             data.characterId is string &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
+             (!('scenario' in data) || (data.scenario is string && data.scenario.size() < 2000));
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -143,6 +158,12 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
       allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /stories/{storyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidStory(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /characters/{characterId} {
